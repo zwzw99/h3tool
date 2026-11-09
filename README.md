@@ -17,7 +17,7 @@ python -m http.server 8000
 ## 使用
 
 1. 输入画面想法，按需选择风格、比例、时长、镜头运动、环境/动作声音、背景配乐和避免项。提示词正文使用英文组织，原始创意照用户输入保留。
-2. 选择“规则整理”生成 H3 三段格式，或选择“AI 优化”调用已配置模型，改写成 1–3 句、目标最多 60 个英文单词的短提示词。AI 输出保留明确指定的画面内容，时长和比例在视频工具中设置。
+2. 选择“规则整理”生成 H3 三段格式，或选择“AI 优化”调用已配置模型，按 MiniMax 官方技能的文生视频规则改写。三段正文合计以 60 个英文单词为目标，优先保留明确要求。时长和比例在视频工具中设置。
 3. 可直接编辑生成结果，复制到 FreeVideo。
 4. 点右上角“模型连接”配置本地 Ollama 或在线 OpenAI Chat Completions 兼容接口。
 
@@ -34,6 +34,8 @@ python -m http.server 8000
 静态前端，无服务器、账号或密钥托管。AI 优化只支持 Ollama `/api/chat` 与 OpenAI Chat Completions 兼容格式；其他协议可后续扩展。
 
 ## 官方资料依据
+
+- 网页的 AI 优化内置了官方技能的文生视频规则，并按工作台的需求精简。网页可独立运行，模型使用现有连接配置。[MiniMax 官方 h3-prompt-writing 技能](https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills/h3-prompt-writing)
 
 - [MiniMax H3 基础视频提示词指南](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md)：纯文本及首/尾帧任务的结构、时间线、镜头、声音规则。
 - [MiniMax H3 全参考模式指南](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md)：图片、视频、音频参考任务的结构。本工具当前 UI 未收集参考素材，因此暂不生成该六段式格式。

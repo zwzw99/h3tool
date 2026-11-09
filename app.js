@@ -4,12 +4,13 @@ const defaults={ollamaUrl:'http://localhost:11434',ollamaModel:'',apiUrl:'https:
 let settings={...defaults,...JSON.parse(localStorage.getItem('promptStudioSettings')||'{}')};
 $('#ollamaUrl').value=settings.ollamaUrl;$('#ollamaModel').value=settings.ollamaModel;$('#apiUrl').value=settings.apiUrl;$('#apiKey').value=settings.apiKey;$('#apiModel').value=settings.apiModel;
 $('#idea').addEventListener('input',e=>$('#charCount').textContent=e.target.value.length);
+$('#tipsOpen').onclick=()=>$('#tipsDialog').showModal();
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2300)}
 function openSettings(){ $('#settingsModal').classList.add('open');$('#settingsModal').setAttribute('aria-hidden','false') }
 function closeSettings(){ $('#settingsModal').classList.remove('open');$('#settingsModal').setAttribute('aria-hidden','true') }
 $('#settingsOpen').onclick=openSettings;$('#settingsClose').onclick=closeSettings;$('#settingsModal').addEventListener('click',e=>{if(e.target===$('#settingsModal'))closeSettings()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSettings()});
 $$('.provider-tab').forEach(b=>b.onclick=()=>{state.provider=b.dataset.provider;$$('.provider-tab').forEach(x=>x.classList.toggle('active',x===b));$$('.provider-form').forEach(f=>f.classList.toggle('hidden',f.dataset.form!==state.provider))});
-$$('.mode-btn').forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;$$('.mode-btn').forEach(x=>x.classList.toggle('active',x===b));$('#generateText').textContent=state.mode==='ai'?'AI 优化提示词':'整理提示词';$('#modeNote').textContent=state.mode==='ai'?'用已连接的模型精简为 1–3 句，时长和比例在视频工具中设置。':'无需连接模型，按结构模板整理你的描述。'});
+$$('.mode-btn').forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;$$('.mode-btn').forEach(x=>x.classList.toggle('active',x===b));$('#generateText').textContent=state.mode==='ai'?'AI 优化提示词':'整理提示词';$('#modeNote').textContent=state.mode==='ai'?'按 MiniMax H3 文生视频规则精简，保留原描述的关键细节。':'无需连接模型，按结构模板整理你的描述。'});
 function saveSettings(){settings={ollamaUrl:$('#ollamaUrl').value.trim()||defaults.ollamaUrl,ollamaModel:$('#ollamaModel').value.trim(),apiUrl:$('#apiUrl').value.trim()||defaults.apiUrl,apiKey:$('#apiKey').value.trim(),apiModel:$('#apiModel').value.trim()};localStorage.setItem('promptStudioSettings',JSON.stringify(settings));toast('模型连接配置已保存在此浏览器');}
 $('#saveSettings').onclick=saveSettings;$('#saveSettingsOnline').onclick=saveSettings;
 function isOpenAICompat(url){return /\/v1(?:\/|$)/i.test(url)||/chat\/completions/i.test(url)}
@@ -18,14 +19,50 @@ $('#testConnection').onclick=async()=>{const st=$('#connectionStatus');st.classN
 function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function templatePrompt(idea){const style=$('#style').value,ratio=$('#ratio').value,duration=$('#duration').value,camera=$('#camera').value,avoid=$('#avoid').value.trim(),sound=$('#sound').value.trim(),music=$('#music').value.trim();const styleEn={'电影写实':'live-action, cinematic','纪录片质感':'documentary style','日系动画':'Japanese animation','3D 动画':'3D animation','复古胶片':'vintage film','极简广告':'minimalist commercial','梦幻超现实':'dreamlike surrealism','水墨东方':'East Asian ink-wash animation'}[style]||style;const cameraEn={'固定镜头':'holds a static shot','缓慢推进':'pushes in at slow speed','平滑跟拍':'follows the subject in a smooth tracking shot','横向平移':'moves laterally in a smooth tracking shot','环绕主体':'moves in an arc around the subject','手持纪实':'uses subtle handheld camera movement','航拍俯冲':'descends in a smooth aerial shot'}[camera]||camera;let visual=`[Shot 1] ${styleEn?`${styleEn}, `:''}${idea}`;visual+=cameraEn?`. The camera ${cameraEn}; keep the subject and setting clear and coherent.`:'. Keep the camera steady and the subject clearly framed.';visual+=' Actions unfold in chronological order. Keep the subject’s appearance, clothing, props, and spatial relationships consistent, with lighting and color appropriate to the scene.';const fields=[`integrated_multimodal_description: ${visual}`,`overall_soundscape: ${sound||'N/A'}`,`non_diegetic_music: ${music||'N/A'}`];if(avoid)fields.push(`Constraints: Avoid ${avoid}.`);const metadata=[duration&&`Duration: ${duration.replace(' 秒',' seconds')}`,ratio&&`Aspect ratio: ${ratio}`].filter(Boolean);return [...fields,...metadata].join('\n\n')}
 function renderOutput(text,providerLabel){state.result=text;$('#outputContent').innerHTML=`<div class="output-text" contenteditable="true" role="textbox" aria-label="可编辑的提示词">${escapeHtml(text)}</div>`;$('#resultStatus').innerHTML='<span class="status-dot"></span> 已生成';$('#outputMeta').textContent=providerLabel+' · 可直接编辑';$('#copy').disabled=false;$('#regenerate').disabled=false}
-const H3_SYSTEM_PROMPT=`Rewrite the input as a short FreeVideo / MiniMax H3 video prompt.
-Write 1–3 English sentences, at most 60 words. Output only the prompt, without headings or explanations.
-Start with the subject, main visible action, and setting. Keep any camera direction, style, sound, and exclusions the user explicitly requests. Copy quoted dialogue and on-screen text verbatim.
-Use concrete nouns and action verbs. Remove repetition, vague praise, and filler. Do not invent people, props, actions, lighting, sounds, or cuts. Use one continuous shot unless cuts are requested.
-Treat duration and aspect ratio as settings for pacing and framing. Do not print them in the prompt.
-Example input: 一个女孩在雨后的东京街道上走路。
-Example output: A girl walks down a Tokyo street after the rain.`;
-async function callModel(prompt){const s={...settings,...Object.fromEntries(['ollamaUrl','ollamaModel','apiUrl','apiKey','apiModel'].map(k=>[k,$('#'+k).value.trim()]))};let url,body,headers={'Content-Type':'application/json'},label,ollamaNative=false,model;if(state.provider==='ollama'){if(!s.ollamaModel)throw new Error('请填写模型名称');model=s.ollamaModel;if(isOpenAICompat(s.ollamaUrl)){url=endpointFor(s.ollamaUrl);label='短提示词 · 本地 llama.cpp '+model}else{url=s.ollamaUrl.replace(/\/$/,'')+'/api/chat';ollamaNative=true;label='短提示词 · 本地 Ollama '+model}}else{if(!s.apiModel)throw new Error('请先填写在线模型名称');model=s.apiModel;url=endpointFor(s.apiUrl);if(s.apiKey)headers.Authorization='Bearer '+s.apiKey;label='短提示词 · 在线模型 '+model}const messages=[{role:'system',content:H3_SYSTEM_PROMPT},{role:'user',content:prompt}];body=ollamaNative?{model,stream:false,messages,options:{temperature:1,top_p:1,top_k:20,presence_penalty:2,num_predict:1600}}:{model,temperature:1,top_p:1,top_k:20,presence_penalty:2,max_tokens:1600,messages};let r;try{r=await fetch(url,{method:'POST',headers,body:JSON.stringify(body)})}catch(e){throw new Error(`无法连接模型服务（${url}）。检查服务是否运行，以及 CORS 设置。`)}if(!r.ok){let detail='';try{const raw=await r.text();try{const parsed=JSON.parse(raw);const apiError=parsed.error;detail=(typeof apiError==='string'?apiError:apiError?.message)||parsed.message||raw}catch{detail=raw}}catch{}const short=detail.replace(/\s+/g,' ').slice(0,260);let advice='';if(r.status===404){advice='；请确认接口路径为 /v1/chat/completions，模型名称与 /v1/models 返回的 id 一致'}throw new Error(`模型请求失败 HTTP ${r.status}（${url}）：${short||'服务未返回错误详情'}${advice}`)}const data=await r.json();const result=ollamaNative?data.message?.content:data.choices?.[0]?.message?.content;if(!result)throw new Error(`模型接口已响应，但没有返回可用文本（${url}）。检查模型名称和 chat template 配置。`);return{text:result.trim(),label}}
-function sourcePrompt(){let p=`用户创意（不得改变核心意图）：${$('#idea').value.trim()}`;if($('#style').value)p+=`\n指定视觉风格：${$('#style').value}`;if($('#camera').value)p+=`\n指定镜头运动：${$('#camera').value}`;if($('#duration').value)p+=`\n目标时长：${$('#duration').value}`;if($('#ratio').value)p+=`\n目标画面比例：${$('#ratio').value}`;if($('#sound').value.trim())p+=`\n环境与动作声音：${$('#sound').value.trim()}`;if($('#music').value.trim())p+=`\n背景配乐（观众听到、画面人物听不到）：${$('#music').value.trim()}`;if($('#avoid').value.trim())p+=`\n禁止项：${$('#avoid').value.trim()}`;return p}
-async function generate(){const idea=$('#idea').value.trim();if(!idea){$('#idea').focus();toast('先写下你想要的画面');return}const btn=$('#generate');btn.disabled=true;$('#resultStatus').textContent='生成中…';$('#outputContent').innerHTML='<div class="loading-state"><div class="loader"></div>正在整理你的画面灵感…</div>';try{if(state.mode==='template')renderOutput(templatePrompt(idea),'规则模板');else{const out=await callModel(sourcePrompt());renderOutput(out.text,out.label)}}catch(e){$('#outputContent').innerHTML=`<div class="empty-state"><p class="empty-title">暂时无法完成 AI 优化</p><p class="empty-sub">${escapeHtml(e.message)}<br>检查模型连接，或切换到规则整理模式。</p></div>`;$('#resultStatus').textContent='连接未完成';$('#outputMeta').textContent='请检查模型配置';toast(e.message)}finally{btn.disabled=false}}
+// Concise T2VA adaptation of MiniMax-AI/MiniMax-H3/skills/h3-prompt-writing.
+const H3_SYSTEM_PROMPT=`Rewrite the source as a faithful MiniMax H3 text-to-video prompt. Output only these three fields, in order:
+
+integrated_multimodal_description: [Shot 1] <visual action and dialogue>
+overall_soundscape: <ambient and action sounds>
+non_diegetic_music: <background score>
+
+In the first field, describe the subject, setting, and actions in playback order. Keep the original counts, names, colors, positions, directions, and exclusions. Write requested camera motion as a natural sentence. Keep one shot unless the user requests cuts. For later shots, use [Shot 2], [Shot 3], and so on. Keep cut times increasing and inside the selected duration. Do not add a time to Shot 1.
+Write in English. Preserve visible text verbatim in double quotes. Preserve spoken words and lyrics verbatim inside <d>[Language] ...</d>. Give each speaker a stable ID such as (S1).
+For motion, keep any stated starting pose, direction, and final position tied to the same subject. Across requested cuts, use consistent names for recurring subjects and carry over the stated appearance and clothing unless the user asks for a change.
+Summarize requested ambient and action sounds in the second field. Keep dialogue and music heard by the characters in the first field. Use the third field only for music heard by the audience. Use N/A for unspecified sound or score rather than inventing it.
+Leave unspecified details open. If form options conflict with the source description, follow the source description. Use the selected duration for timing only. Aim for 60 English words or fewer across the field contents while keeping explicit requirements. Before answering, check that the rewritten scene still matches the input.`;
+async function callModel(prompt){const s={...settings,...Object.fromEntries(['ollamaUrl','ollamaModel','apiUrl','apiKey','apiModel'].map(k=>[k,$('#'+k).value.trim()]))};let url,body,headers={'Content-Type':'application/json'},label,ollamaNative=false,model;if(state.provider==='ollama'){if(!s.ollamaModel)throw new Error('请填写模型名称');model=s.ollamaModel;if(isOpenAICompat(s.ollamaUrl)){url=endpointFor(s.ollamaUrl);label='短提示词 · 本地 llama.cpp '+model}else{url=s.ollamaUrl.replace(/\/$/,'')+'/api/chat';ollamaNative=true;label='短提示词 · 本地 Ollama '+model}}else{if(!s.apiModel)throw new Error('请先填写在线模型名称');model=s.apiModel;url=endpointFor(s.apiUrl);if(s.apiKey)headers.Authorization='Bearer '+s.apiKey;label='短提示词 · 在线模型 '+model}const messages=[{role:'system',content:H3_SYSTEM_PROMPT},{role:'user',content:prompt}];body=ollamaNative?{model,stream:false,messages,options:{temperature:1,top_p:1,top_k:20,presence_penalty:2,num_predict:1600}}:{model,temperature:1,top_p:1,top_k:20,presence_penalty:2,max_tokens:1600,messages};
+
+// Qwen chat templates can consume the entire output budget on reasoning.
+if (state.provider === 'ollama' && !ollamaNative && /qwen/i.test(model)) {
+  body.chat_template_kwargs = {enable_thinking: false};
+}
+
+let r;try{r=await fetch(url,{method:'POST',headers,body:JSON.stringify(body)})}catch(e){throw new Error(`无法连接模型服务（${url}）。检查服务是否运行，以及 CORS 设置。`)}if(!r.ok){let detail='';try{const raw=await r.text();try{const parsed=JSON.parse(raw);const apiError=parsed.error;detail=(typeof apiError==='string'?apiError:apiError?.message)||parsed.message||raw}catch{detail=raw}}catch{}const short=detail.replace(/\s+/g,' ').slice(0,260);let advice='';if(r.status===404){advice='；请确认接口路径为 /v1/chat/completions，模型名称与 /v1/models 返回的 id 一致'}throw new Error(`模型请求失败 HTTP ${r.status}（${url}）：${short||'服务未返回错误详情'}${advice}`)}const data=await r.json();const choice = data.choices?.[0];
+const message = ollamaNative ? data.message : choice?.message;
+const content = typeof message?.content === 'string' ? message.content.trim() : '';
+const result = content.replace(/^<think>[\s\S]*?<\/think>\s*/i, '').trim();
+if (result && !/^<think>/i.test(result)) return {text: result, label};
+
+const reachedLimit = (ollamaNative ? data.done_reason : choice?.finish_reason) === 'length';
+if (reachedLimit || message?.reasoning_content || message?.thinking || /^<think>/i.test(result)) {
+  throw new Error('模型已响应，但未生成正文。请在本地模型服务中关闭思考模式后重试，或先使用规则整理。');
+}
+throw new Error(`模型接口已响应，但没有返回可用文本（${url}）。请检查模型的聊天模板。`);}
+function sourcePrompt(){
+  const fields = [
+    ['Source description', $('#idea').value],
+    ['Visual style', $('#style').value],
+    ['Camera direction', $('#camera').value],
+    ['Target duration (timing only)', $('#duration').value],
+    ['Ambient and action sounds', $('#sound').value],
+    ['Background music', $('#music').value],
+    ['Exclusions', $('#avoid').value]
+  ];
+  return fields
+    .filter(([, value]) => value.trim())
+    .map(([label, value]) => `${label}: ${value.trim()}`)
+    .join('\n');
+}
+async function generate(){const idea=$('#idea').value.trim();if(!idea){$('#idea').focus();toast('先写下你想要的画面');return}const btn=$('#generate');btn.disabled=true;$('#resultStatus').textContent='生成中…';$('#outputContent').innerHTML='<div class="loading-state"><div class="loader"></div>正在整理你的画面灵感…</div>';try{if(state.mode==='template')renderOutput(templatePrompt(idea),'规则模板');else{const out=await callModel(sourcePrompt());renderOutput(out.text,out.label)}}catch(e){$('#outputContent').innerHTML=`<div class="empty-state"><p class="empty-title">暂时无法完成 AI 优化</p><p class="empty-sub">${escapeHtml(e.message)}<br>检查模型连接，或切换到规则整理模式。</p></div>`;$('#resultStatus').textContent='优化失败';$('#outputMeta').textContent='可重试或使用规则整理';toast(e.message)}finally{btn.disabled=false}}
 $('#generate').onclick=generate;$('#regenerate').onclick=generate;$('#copy').onclick=async()=>{const el=$('.output-text');if(!el)return;try{await navigator.clipboard.writeText(el.innerText);toast('提示词已复制')}catch{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);toast('已选中结果，请按 Ctrl+C 复制')}};$('#outputContent').addEventListener('input',()=>{const el=$('.output-text');if(el)state.result=el.innerText});
